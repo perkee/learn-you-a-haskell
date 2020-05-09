@@ -2,6 +2,7 @@
 import System.Environment
 import Data.Map as M
 import Data.List as L
+import Data.Maybe as Ma
 import Control.Exception
 import Control.Monad
 import Flow
@@ -35,17 +36,30 @@ printFile (idx, path) = do
       let
         ls = lines contents
         lineNumsWidth = (length ls |> fromIntegral |> numDigits 10)
-        numFence = replicate lineNumsWidth '─'
         maxLineWidth = L.map length ls |> maximum |> succ
         path' = idx ++ path
         pathWidth = length path'
-        lineFence = rep '─' maxLineWidth
-        tweenFence = rep '─' (pathWidth - lineNumsWidth - 1)
+        boxWidth = maxLineWidth + lineNumsWidth + 2
       in do
         putStr <| unlines
-          [ "╭" ++ rep '─' pathWidth ++ "╮"
-          , "│" ++ path' ++ "│"
-          , "├" ++ numFence ++ "┬" ++ tweenFence ++ "┴" ++ rep '─' (maxLineWidth - pathWidth + lineNumsWidth) ++ "╮"
+          [ boxLine '─' (pathWidth + 1) <| M.fromList
+            [ (0, '╭')
+            , (pathWidth + 1, '╮')
+            ]
+          , boxLine' (lineNumsWidth + pathWidth + 2) <| M.fromList
+            $ (0, '│')
+            : (lineNumsWidth + pathWidth + 1, '│')
+            : imap (#) 1 path'
+          , boxLine '─' (max boxWidth (lineNumsWidth + pathWidth)) <| M.fromList
+            $ (0, '├')
+            : (boxWidth, orderedCases '┬' 'x' '╮' boxWidth (lineNumsWidth + pathWidth))
+            : if pathWidth == lineNumsWidth then
+                [ (pathWidth + 1, '┼') ]
+              else
+                let
+                  pathFinial = orderedCases '┴' '┤' '╯' (pathWidth + 1) boxWidth
+                in
+                [ (pathWidth + 1, pathFinial), (lineNumsWidth + 1, '┬') ]
           ]
         _ <- ls
           |> humanIndexedMap (prependNumber lineNumsWidth)
@@ -55,12 +69,16 @@ printFile (idx, path) = do
             .> ('│':)
             .> putStrLn
           )
-        when (last ls /= "") <| putStrLn <| concat <|
+        when (last contents /= '\n') <| putStrLn <| concat <|
           [ '│' : padString " " (lineNumsWidth - 1) "❌"
           , padEndString " " (maxLineWidth + 1) "│ No New Line At End Of File"
           , "│"
           ]
-        putStrLn <| "╰" ++ numFence ++ "┴" ++ lineFence ++ "╯"
+        putStrLn <| boxLine '─' boxWidth <| M.fromList
+          [ (0, '╰')
+          , (lineNumsWidth + 1, '┴')
+          , (boxWidth, '╯')
+          ]
         return Ok
 
 isProblematic :: Result -> Bool
@@ -98,6 +116,19 @@ problemSummaries [] = []
 problemSummaries (Ok : rest) = problemSummaries rest
 problemSummaries (Problem s : rest) = s : problemSummaries rest
 
+imap :: (Int -> a -> b) -> Int -> [a] -> [b]
+imap _ _ [] = []
+imap f n (a:as) = (f n a) : (imap f (succ n) as)
+
+
+boxLine :: Char -> Int -> Map Int Char -> String
+boxLine def len specials =
+    L.map (\idx -> M.findWithDefault def idx specials) [0..len]
+
+boxLine' :: Int -> Map Int Char -> String
+boxLine' len specials =
+    Ma.mapMaybe (\idx -> M.lookup idx specials) [0..len]
+
 printFiles :: [FilePath] -> IO ()
 printFiles paths =
   let
@@ -134,6 +165,15 @@ printFiles paths =
 rep :: a -> Int -> [a]
 rep a n =
   repeat a |> L.take n
+
+(#) :: a -> b -> (a, b)
+a # b = (a, b)
+
+orderedCases :: Ord a => b -> b -> b -> a -> a -> b
+orderedCases lt eq gt left right
+  | left < right = lt
+  | left == right = eq
+  | left > right = gt
 
 main :: IO ()
 main = do
