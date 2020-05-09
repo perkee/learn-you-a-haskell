@@ -37,9 +37,18 @@ printFile (idx, path) = do
         ls = lines contents
         lineNumsWidth = (length ls |> fromIntegral |> numDigits 10)
         maxLineWidth = L.map length ls |> maximum |> succ
+        showNewlineWarning = last contents /= '\n'
+        newLineWarning = "No newline at the end of the file."
         path' = idx ++ path
         pathWidth = length path'
-        boxWidth = maxLineWidth + lineNumsWidth + 2
+        boxWidth =
+          let
+            boxWidth' = maxLineWidth + lineNumsWidth + 2
+          in
+            if showNewlineWarning then
+              max (length newLineWarning + 1) boxWidth'
+            else
+              boxWidth'
       in do
         putStr <| unlines
           [ boxLine '─' (pathWidth + 1) <| M.fromList
@@ -62,23 +71,37 @@ printFile (idx, path) = do
                 [ (pathWidth + 1, pathFinial), (lineNumsWidth + 1, '┬') ]
           ]
         _ <- ls
-          |> humanIndexedMap (prependNumber lineNumsWidth)
-          |> mapM (
-            padEndString " " (lineNumsWidth + maxLineWidth + 1)
-            .> (++"│")
-            .> ('│':)
-            .> putStrLn
-          )
-        when (last contents /= '\n') <| putStrLn <| concat <|
-          [ '│' : padString " " (lineNumsWidth - 1) "❌"
-          , padEndString " " (maxLineWidth + 1) "│ No New Line At End Of File"
-          , "│"
-          ]
-        putStrLn <| boxLine '─' boxWidth <| M.fromList
-          [ (0, '╰')
-          , (lineNumsWidth + 1, '┴')
-          , (boxWidth, '╯')
-          ]
+          |> humanIndexedMap (\jdx line ->
+            [ (show jdx |> padString " " lineNumsWidth) |> imap (#) 1
+            , [ (lineNumsWidth + 1, '│')
+              , (boxWidth, '│')
+              , (0, '│')
+              ]
+            , imap (#) (lineNumsWidth + 3) line
+            ] |> concat |> M.fromList |> boxLine ' ' boxWidth
+          ) |> mapM putStrLn
+        if showNewlineWarning then do
+          putStr <| unlines
+            [ boxLine '─' boxWidth <| M.fromList
+              [ (0, '├')
+              , (lineNumsWidth + 1, '┴')
+              , (boxWidth, '┤')
+              ]
+            , boxLine ' ' boxWidth <| M.fromList
+              $ (boxWidth, '│')
+              : (0, '│')
+              : imap (#) 1 newLineWarning
+            , boxLine '─' boxWidth <| M.fromList
+              [ (0, '╰')
+              , (boxWidth, '╯')
+              ]
+            ]
+        else
+          putStrLn <| boxLine '─' boxWidth <| M.fromList
+            [ (0, '╰')
+            , (lineNumsWidth + 1, '┴')
+            , (boxWidth, '╯')
+            ]
         return Ok
 
 isProblematic :: Result -> Bool
