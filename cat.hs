@@ -29,13 +29,34 @@ printFile path = do
   case contentsOrExcept of
     Left except -> do
       return <| Problem <| "Could not print file " ++ path ++ "\n  instead got error: " ++ (show (except :: IOException))
-    Right contents -> do
-      putStrLn <| "\n# File " ++ path ++ ":"
-      putStr contents
-      if last contents /= '\n' then do
-        putStrLn "\n%%% No New Line At End Of File"
-        return Ok
-      else
+    Right contents ->
+      let
+        ls = lines contents
+        lineNumsWidth = (length ls |> fromIntegral |> numDigits 10)
+        numFence = replicate lineNumsWidth '─'
+        maxLineWidth = map length ls |> maximum |> succ
+        pathWidth = length path
+        lineFence = rep '─' maxLineWidth
+        tweenFence = rep '─' (pathWidth - lineNumsWidth - 1)
+      in do
+        putStrLn <| "┌" ++ rep '─' pathWidth ++ "┐"
+        putStrLn <| "│" ++ path ++ "│"
+        putStrLn <| "├" ++ numFence ++ "┬" ++ tweenFence ++ "┴" ++ rep '─' (maxLineWidth - pathWidth + lineNumsWidth) ++ "┐"
+        _ <- ls
+          |> humanIndexedMap (prependNumber lineNumsWidth)
+          |> mapM (
+            padEndString " " (lineNumsWidth + maxLineWidth + 1)
+            .> (++"│")
+            .> ('│':)
+            .> putStrLn
+          )
+        if last contents /= '\n' then do
+          putStr <| '│' : padString " " (lineNumsWidth - 1) "❌"
+          putStr <| padEndString " " (maxLineWidth + 1) "│ No New Line At End Of File"
+          putStrLn "│"
+        else
+          return ()
+        putStrLn <| "└" ++ numFence ++ "┴" ++ lineFence ++ "┘"
         return Ok
 
 isProblematic :: Result -> Bool
@@ -54,11 +75,15 @@ resultToStatusMark :: Result -> Char
 resultToStatusMark Ok = '✅'
 resultToStatusMark (Problem _) = '❌'
 
+padEndString :: String -> Int -> String -> String
+padEndString padding width =
+  reverse
+  .> padString padding width
+  .> reverse
+
 appendStatus :: Int -> Result -> String -> String
 appendStatus width r =
-  reverse
-  .>  padString " " width
-  .> reverse
+  padEndString " " width
   .> (++('│' : (resultToStatusMark r) : "" ))
 
 errLn :: String -> IO ()
