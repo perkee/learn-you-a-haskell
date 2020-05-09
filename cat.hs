@@ -1,7 +1,9 @@
 -- import System.IO
 import System.Environment
-import Data.List
+import Data.Map as M
+import Data.List as L
 import Control.Exception
+import Control.Monad
 import Flow
 import System.Exit
 import System.IO (hPutStrLn, stderr)
@@ -23,8 +25,8 @@ numDigits :: (RealFloat a) => (RealFloat a) => a -> a -> Int
 numDigits base =
   logBase base .> floor .> succ
 
-printFile :: FilePath -> IO Result
-printFile path = do
+printFile :: (String, FilePath) -> IO Result
+printFile (idx, path) = do
   contentsOrExcept <- try <| readFile path
   case contentsOrExcept of
     Left except -> do
@@ -34,14 +36,17 @@ printFile path = do
         ls = lines contents
         lineNumsWidth = (length ls |> fromIntegral |> numDigits 10)
         numFence = replicate lineNumsWidth '─'
-        maxLineWidth = map length ls |> maximum |> succ
-        pathWidth = length path
+        maxLineWidth = L.map length ls |> maximum |> succ
+        path' = idx ++ path
+        pathWidth = length path'
         lineFence = rep '─' maxLineWidth
         tweenFence = rep '─' (pathWidth - lineNumsWidth - 1)
       in do
-        putStrLn <| "┌" ++ rep '─' pathWidth ++ "┐"
-        putStrLn <| "│" ++ path ++ "│"
-        putStrLn <| "├" ++ numFence ++ "┬" ++ tweenFence ++ "┴" ++ rep '─' (maxLineWidth - pathWidth + lineNumsWidth) ++ "┐"
+        putStr <| unlines
+          [ "╭" ++ rep '─' pathWidth ++ "╮"
+          , "│" ++ path' ++ "│"
+          , "├" ++ numFence ++ "┬" ++ tweenFence ++ "┴" ++ rep '─' (maxLineWidth - pathWidth + lineNumsWidth) ++ "╮"
+          ]
         _ <- ls
           |> humanIndexedMap (prependNumber lineNumsWidth)
           |> mapM (
@@ -50,13 +55,12 @@ printFile path = do
             .> ('│':)
             .> putStrLn
           )
-        if last contents /= '\n' then do
-          putStr <| '│' : padString " " (lineNumsWidth - 1) "❌"
-          putStr <| padEndString " " (maxLineWidth + 1) "│ No New Line At End Of File"
-          putStrLn "│"
-        else
-          return ()
-        putStrLn <| "└" ++ numFence ++ "┴" ++ lineFence ++ "┘"
+        when (last ls /= "") <| putStrLn <| concat <|
+          [ '│' : padString " " (lineNumsWidth - 1) "❌"
+          , padEndString " " (maxLineWidth + 1) "│ No New Line At End Of File"
+          , "│"
+          ]
+        putStrLn <| "╰" ++ numFence ++ "┴" ++ lineFence ++ "╯"
         return Ok
 
 isProblematic :: Result -> Bool
@@ -95,19 +99,28 @@ problemSummaries (Ok : rest) = problemSummaries rest
 problemSummaries (Problem s : rest) = s : problemSummaries rest
 
 printFiles :: [FilePath] -> IO ()
-printFiles paths = do
-  results <- mapM printFile paths
+printFiles paths =
+  let
+    numPaths = length paths
+    pathsNumWidth = (numPaths |> fromIntegral |> numDigits 10)
+    indices = if numPaths > 1
+      then
+        [ show n |> padString " " pathsNumWidth |> (++" ") | n <- [1..] ]
+      else
+        repeat ""
+    pathsWithIndices = zip indices paths
+  in do
+  results <- mapM printFile pathsWithIndices
   case problemSummaries results of
     [] ->
       exitSuccess
     problems ->
       let
-        pathsNumWidth = (length paths |> fromIntegral |> numDigits 10)
         numFence = replicate pathsNumWidth '─'
-        maxArgWidth = map length paths |> maximum |> succ
+        maxArgWidth = L.map length paths |> maximum |> succ
         argFence = rep '─' maxArgWidth
       in do
-        _ <- errLn <| "┌" ++ numFence ++ "┬" ++ argFence ++ "┐"
+        _ <- errLn <| "╭" ++ numFence ++ "┬" ++ argFence ++ "╮"
         _ <- paths
           |> humanIndexedMap (prependNumber pathsNumWidth)
           |> zipWith (appendStatus (pathsNumWidth + maxArgWidth + 1)) results
@@ -115,16 +128,14 @@ printFiles paths = do
             ('│':)
             .> errLn
           )
-        errLn <| "└" ++ numFence ++ "┴" ++ argFence ++ "┘"
+        errLn <| "╰" ++ numFence ++ "┴" ++ argFence ++ "╯"
         die <| unlines problems
 
 rep :: a -> Int -> [a]
 rep a n =
-  repeat a |> take n
+  repeat a |> L.take n
 
 main :: IO ()
 main = do
   args <- getArgs
   printFiles args
-
-
